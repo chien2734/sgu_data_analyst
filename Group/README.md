@@ -17,7 +17,7 @@ Nhóm tiến hành phân tích các bộ dữ liệu thực tế bằng **Python
 ---
 
 ## 📂 Cấu trúc thư mục dự án
-sgu_data_analyst/
+sgu_data_analyst/Group/
 
   ├── BTL01_EDA/ # Bài tập lớn 1 – Phân tích khám phá dữ liệu (EDA)
   
