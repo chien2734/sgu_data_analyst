@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+
+# Data
+data/raw/*
+!data/raw/README.md
+
+# Environment
+.env
+venv/
+.env/
+.ipynb_checkpoints/
+
+# Power BI
+*.pbix
+
+# Temporary
+*.tmp
