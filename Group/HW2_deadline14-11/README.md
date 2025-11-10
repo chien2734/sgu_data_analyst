@@ -58,3 +58,5 @@ Dự án này được xây dựng dựa trên logic của file `findash_app.py`
     pip install git+https://github.com/thinh-vu/vnstock
     ```
     *(Lưu ý: `vnstock` sẽ tự động cài `vnai` và `vnstock_ezchart` làm phụ thuộc).*
+### 3. Chạy chương trình
+   Vào terminal -> cd Group/HW2_deadline14-11/ -> streamlit run tenfile.py
