@@ -3,13 +3,13 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import requests
 from vnstock import Vnstock, Listing, Finance, Trading, Screener, Quote
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
-
+import requests 
+import bs4
 #==============================================================================
 # CẤU HÌNH BAN ĐẦU
 #==============================================================================
@@ -48,7 +48,7 @@ def tab1():
     @st.cache_data(ttl=3600) 
     def get_summary_data(ticker_symbol):
         try:
-            stock = Vnstock().stock(symbol=ticker_symbol, source='TCBS')
+            stock = Vnstock().stock(symbol=ticker_symbol, source='VCI')
             overview = stock.company.overview()
             overview_df = overview.T
             if overview_df.empty:
@@ -304,62 +304,80 @@ def tab4():
             st.warning("Không có dữ liệu báo cáo tài chính cho lựa chọn này.")
                 
 #==============================================================================
-# Tab 5: Phân tích (Bộ lọc Cổ phiếu) - ĐÃ HOÀN THIỆN
+# Tab 5: Phân tích (Analysis) - ĐÃ HOÀN THIỆN
 #==============================================================================
 def tab5():
-    st.title("Bộ lọc Cổ phiếu Theo Sàn")
-    st.write("Sử dụng chức năng 'Screener' của vnstock (theo tài liệu 8.9).")
-    
-    # --- TÙY CHỌN BỘ LỌC (ĐÃ ĐƠN GIẢN HÓA) ---
-    st.subheader("Thiết lập Bộ lọc")
-    
-    # Chỉ giữ lại bộ lọc Sàn, vì API chỉ hỗ trợ cái này
-    exchange = st.multiselect("Chọn Sàn", 
-                              options=['HOSE', 'HNX', 'UPCOM'], 
-                              default=['HOSE'])
+    st.title(f"Phân tích Chi tiết (Yahoo Finance) - {ticker}")
+    st.write(f"Lấy dữ liệu phân tích của {ticker} từ Yahoo Finance.")
+    st.info(f"Đang truy cập: https://finance.yahoo.com/quote/{ticker}.VN/analysis/")
 
-    run_button = st.button("Chạy Bộ lọc")
-
-    # --- HÀM LẤY DỮ LIỆU ---
+    # --- HÀM LẤY DỮ LIỆU (Từ file findash_demo.ipynb, đã sửa lỗi) ---
     @st.cache_data(ttl=600) # Cache 10 phút
-    def get_screener_data(exchange_list):
+    def get_analysis_data(ticker_symbol):
         """
-        SỬA LỖI: Chỉ tải dữ liệu theo Sàn.
+        Sử dụng logic 'cào' dữ liệu từ findash_demo.ipynb
+        để lấy các bảng phân tích từ Yahoo Finance.
+        SỬA LỖI: Tự động thêm đuôi .VN cho các mã VN30
         """
         try:
-            # 1. Chỉ truyền tham số sàn giao dịch
-            params = {"exchangeName": ",".join(exchange_list)}
+            # SỬA LỖI: Thêm đuôi .VN vào ticker (dựa trên phát hiện của bạn)
+            if not ticker_symbol.endswith(".VN"):
+                ticker_symbol = f"{ticker_symbol}.VN"
+
+            analysts_site = f"https://finance.yahoo.com/quote/{ticker_symbol}/analysis"
+            headers = {'User-agent': 'Mozilla/5.0'} 
             
-            screener = Screener()
-            # 2. Tải tất cả cổ phiếu (limit=1700 là tối đa)
-            screener_df = screener.stock(params=params, limit=1700) 
+            response = requests.get(analysts_site, headers=headers)
+            response.raise_for_status() # Báo lỗi nếu trang không tồn tại (404)
+
+            tables = pd.read_html(response.text)
             
-            return screener_df
+            # Tên các bảng (theo thứ tự trên Yahoo Finance)
+            table_names = [
+                "Ước tính Thu nhập (Earnings Estimate)", 
+                "Ước tính Doanh thu (Revenue Estimate)", 
+                "Lịch sử Thu nhập (Earnings History)",
+                "Xu hướng EPS (EPS Trend)", 
+                "Điều chỉnh EPS (EPS Revisions)",
+                "Ước tính Tăng trưởng (Growth Estimates)"
+            ]
+            
+            # Ghép tên và bảng lại một cách an toàn
+            num_tables_found = min(len(tables), len(table_names))
+            
+            table_dict = {
+                table_names[i]: tables[i] for i in range(num_tables_found)
+            }
+            
+            return table_dict
         
         except Exception as e:
-            st.error(f"Lỗi khi tải dữ liệu từ bộ lọc: {e}")
-            st.info("API của vnstock/TCBS có thể đang tạm thời gián đoạn.")
-            return pd.DataFrame()
+            st.error(f"Lỗi khi 'cào' dữ liệu phân tích cho {ticker_symbol}: {e}")
+            st.info(f"Mã cổ phiếu {ticker_symbol} có thể không có dữ liệu phân tích trên Yahoo Finance.")
+            return None
 
     # --- Hiển thị kết quả ---
-    if run_button:
-        if not exchange:
-            st.warning("Vui lòng chọn ít nhất một sàn giao dịch.")
-        else:
-            with st.spinner("Đang tải dữ liệu từ bộ lọc..."):
-                results_df = get_screener_data(exchange)
+    if ticker != '-':
+        with st.spinner(f"Đang tải dữ liệu phân tích cho {ticker}..."):
+            analysis_dict = get_analysis_data(ticker)
+        
+        if analysis_dict and len(analysis_dict) > 0:
+            st.success(f"Đã tìm thấy {len(analysis_dict)} bảng phân tích:")
             
-            if not results_df.empty:
-                st.subheader(f"Tìm thấy {len(results_df)} cổ phiếu:")
-                
-                st.dataframe(
-                    results_df, 
-                    use_container_width=True,
-                    hide_index=True 
-                )
-            else:
-                st.warning("Không tìm thấy cổ phiếu nào phù hợp với tiêu chí của bạn.")
-                           
+            # Code này sẽ lặp qua TẤT CẢ các bảng tìm thấy
+            for table_name, table_df in analysis_dict.items():
+                st.subheader(table_name)
+                if not table_df.empty and len(table_df.columns) > 0:
+                    try:
+                        # Đặt cột đầu tiên làm chỉ mục (index) cho đẹp
+                        st.dataframe(table_df.set_index(table_df.columns[0]), use_container_width=True)
+                    except:
+                        st.dataframe(table_df, use_container_width=True)
+                else:
+                    st.dataframe(table_df, use_container_width=True)
+        else:
+            st.warning(f"Không tìm thấy dữ liệu phân tích nào cho {ticker} trên Yahoo Finance.")
+                                         
 #==============================================================================
 # Tab 6: Mô phỏng Monte Carlo - ĐÃ HOÀN THIỆN
 #==============================================================================
