@@ -20,7 +20,6 @@ Dự án này được xây dựng dựa trên logic của file `findash_app.py`
 
 3.  **Tab 3: Thống kê (Statistics):**
     * Hiển thị các chỉ số tài chính quan trọng (P/E, ROA, ROE,...) theo Hàng năm hoặc Hàng quý, lấy từ hàm `Vnstock().stock(...).finance.ratio()`.
-    * *(Lưu ý: Chức năng định dạng số lớn (thêm dấu ngắt) đã bị tạm hoãn để fix sau.)*
 
 4.  **Tab 4: Báo cáo Tài chính (Financials):**
     * Cho phép người dùng xem chi tiết 3 báo cáo tài chính chính:
