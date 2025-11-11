@@ -30,10 +30,15 @@ Dự án này được xây dựng dựa trên logic của file `findash_app.py`
     * Tùy chọn xem theo Hàng năm hoặc Hàng quý.
 
 5.  **Tab 5: Phân tích (Analysis):**
-    * *Lưu ý: Chức năng này được điều chỉnh từ file `findash_demo.ipynb`.*
-    * Thực hiện "cào" (scrape) dữ liệu trực tiếp từ trang `finance.yahoo.com/analysis` của mã được chọn.
-    * *(Hạn chế: Yahoo Finance gần như không có dữ liệu này cho các mã cổ phiếu Việt Nam).*
-    * Chức năng này hiện tại vẫn chưa hoàn chỉnh. Hiện tại chỉ hiển thị các cố phiểu đang có.
+    * Thực hiện lấy dữ liệu phân tích từ API của yfinance. Gồm các bảng:
+        * 1. Khuyến nghị (Recommendations)
+        * 2. Ước tính Thu nhập (Earnings Estimate)
+        * 3. Ước tính Doanh thu (Revenue Estimate)
+        * 4. Lịch sử Thu nhập (Earnings History)
+        * 5. Xu hướng EPS (EPS Trend)
+        * 6. Điều chỉnh EPS (EPS Revisions)
+        * 7. Ước tính Tăng trưởng (Growth Estimates)
+    * *(Hạn chế: Yahoo Finance có thể không có hoặc thiếu dữ liệu phân tích cho một số mã cổ phiếu Việt Nam).*
 
 6.  **Tab 6: Mô phỏng Monte Carlo:**
     * Chạy mô phỏng Monte Carlo (dựa trên logic của `findash_app.py`) để dự đoán kịch bản giá trong 30-90 ngày tới.
@@ -52,11 +57,11 @@ Dự án này được xây dựng dựa trên logic của file `findash_app.py`
 * **Python 3.10 trở lên:** Thư viện `vnstock` v3.x (và các thư viện phụ trợ như `vnai`) yêu cầu Python 3.10+. Dự án này **sẽ thất bại** nếu chạy trên Python 3.9 hoặc cũ hơn.
 
 ### 2. Thiết lập thư viện
-     Cài đặt tất cả các thư viện cần thiết vào môi trường này:
+    Cài đặt tất cả các thư viện cần thiết vào môi trường này:
     ```bash
     pip install streamlit pandas numpy plotly matplotlib requests yfinance
     pip install git+https://github.com/thinh-vu/vnstock
     ```
     *(Lưu ý: `vnstock` sẽ tự động cài `vnai` và `vnstock_ezchart` làm phụ thuộc).*
 ### 3. Chạy chương trình
-   Vào terminal -> cd Group/HW2_deadline14-11/ -> streamlit run tenfile.py
+   Vào terminal -> cd Group -> cd HW2_deadline14-11 -> streamlit run `tenfile`.py
