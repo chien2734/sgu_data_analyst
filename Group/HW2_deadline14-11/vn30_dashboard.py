@@ -10,6 +10,7 @@ from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 import requests 
 import bs4
+import yfinance as yf
 #==============================================================================
 # CẤU HÌNH BAN ĐẦU
 #==============================================================================
@@ -62,7 +63,7 @@ def tab1():
         summary_df = get_summary_data(ticker)
         
         if not summary_df.empty:
-            st.subheader("Thông tin Cơ bản Doanh nghiệp")
+            st.subheader("Thông tin cơ bản doanh nghiệp")
             st.dataframe(summary_df, use_container_width=True)
         else:
             st.warning(f"Không tìm thấy dữ liệu tổng quan cho mã {ticker}.")
@@ -76,19 +77,25 @@ def tab1():
             stock = Vnstock().stock(symbol=ticker_symbol, source='VCI') # Dùng VCI cho đồng bộ
             stockdata = stock.quote.history(start=start_date, end=end_date, interval='1D')
             stockdata = stockdata.reset_index().rename(columns={"time": "date"})
+
+            # vnstock trả về đơn vị ngàn đồng, ta nhân 1000 để ra VND
+            price_cols = ['open', 'high', 'low', 'close']
+            for col in price_cols:
+                if col in stockdata.columns:
+                    stockdata[col] = stockdata[col] * 1000
             return stockdata
         except Exception as e:
             st.error(f"Lỗi khi tải dữ liệu giá: {e}")
             return pd.DataFrame()
         
     if ticker != '-':
-            st.subheader("Biểu đồ Giá (5 Năm)")
+            st.subheader("Biểu đồ giá (5 Năm)")
             chartdata = get_stock_data(ticker) 
                        
             if not chartdata.empty:
-                fig = px.area(chartdata, x='date', y='close', title=f"Biểu đồ Giá Đóng cửa của {ticker}")
+                fig = px.area(chartdata, x='date', y='close', title=f"Biểu đồ giá Đóng cửa của {ticker}")
                 
-                fig.update_xaxes(title_text='Ngày')
+                fig.update_xaxes(title_text='Thời điểm')
                 fig.update_yaxes(title_text='Giá (VND)')
                 
                 fig.update_xaxes(
@@ -140,6 +147,15 @@ def tab2():
             # Lấy dữ liệu
             chartdata = stock.quote.history(start=start_str, end=end_str, interval=interval)
             
+            if chartdata.empty:
+                return pd.DataFrame()
+            
+            # Nhân 1000 vào tất cả các cột giá
+            price_cols = ['open', 'high', 'low', 'close']
+            for col in price_cols:
+                if col in chartdata.columns:
+                    chartdata[col] = chartdata[col] * 1000
+            
             # Tính SMA 50
             chartdata['SMA_50'] = chartdata['close'].rolling(50).mean()
             
@@ -162,7 +178,7 @@ def tab2():
             # Thêm Biểu đồ Nến hoặc Đường
             if plot_type == 'Đường (Line)':
                 fig.add_trace(go.Scatter(x=chartdata['date'], y=chartdata['close'], mode='lines', 
-                                         name = 'Giá Đóng cửa'), secondary_y = False)
+                                         name = 'Giá đóng cửa'), secondary_y = False)
             else:
                 fig.add_trace(go.Candlestick(x = chartdata['date'], open = chartdata['open'], 
                                              high = chartdata['high'], low = chartdata['low'], 
@@ -196,7 +212,6 @@ def tab2():
 #==============================================================================
 def tab3():
     st.title(f"Thống kê chỉ số tài chính - {ticker}")
-    st.write(f"Dữ liệu được lấy từ nguồn 'VCI' (theo tài liệu vnstock 8.8).")
     
     # Thêm lựa chọn Hàng năm/Hàng quý
     period = st.radio("Chọn kỳ báo cáo", ('Hàng năm', 'Hàng quý'), horizontal=True, key="tab3_period")
@@ -232,7 +247,6 @@ def tab3():
     if ratios_df is not None and not ratios_df.empty:
         st.subheader(f"Các chỉ số tài chính {period} của {ticker}")
         
-        # Hiển thị DataFrame. Cột index (bây giờ có tên là 'STT')
         # sẽ tự động hiển thị cùng với các cột dữ liệu.
         st.dataframe(ratios_df, use_container_width=True)
         
@@ -244,7 +258,6 @@ def tab3():
 #==============================================================================
 def tab4():
     st.title(f"Báo cáo tài chính - {ticker}")
-    st.write(f"Dữ liệu được lấy từ nguồn 'VCI' (theo tài liệu vnstock 8.8).")
     
     # Tạo 2 cột cho 2 bộ lọc
     c1, c2 = st.columns(2)
@@ -307,77 +320,107 @@ def tab4():
 # Tab 5: Phân tích (Analysis) - ĐÃ HOÀN THIỆN
 #==============================================================================
 def tab5():
-    st.title(f"Phân tích Chi tiết (Yahoo Finance) - {ticker}")
-    st.write(f"Lấy dữ liệu phân tích của {ticker} từ Yahoo Finance.")
-    st.info(f"Đang truy cập: https://finance.yahoo.com/quote/{ticker}.VN/analysis/")
+    st.title(f"Phân tích mã {ticker}")
+    st.write(f"Các phân tích của yfinance cho mã {ticker}.")
+    st.warning("Lưu ý: yfinance có thể không có dữ liệu phân tích cho các mã Việt Nam.")
 
-    # --- HÀM LẤY DỮ LIỆU (Từ file findash_demo.ipynb, đã sửa lỗi) ---
     @st.cache_data(ttl=600) # Cache 10 phút
-    def get_analysis_data(ticker_symbol):
+    def get_analysis_data_yfinance(ticker_symbol):
         """
-        Sử dụng logic 'cào' dữ liệu từ findash_demo.ipynb
-        để lấy các bảng phân tích từ Yahoo Finance.
-        SỬA LỖI: Tự động thêm đuôi .VN cho các mã VN30
+        Sử dụng các thuộc tính (attributes) của yfinance Ticker
+        mà bạn đã cung cấp (ví dụ: .earnings_estimate)
         """
+        data_package = {}
         try:
-            # SỬA LỖI: Thêm đuôi .VN vào ticker (dựa trên phát hiện của bạn)
+            # SỬA LỖI: Phải dùng đuôi .VN
             if not ticker_symbol.endswith(".VN"):
-                ticker_symbol = f"{ticker_symbol}.VN"
-
-            analysts_site = f"https://finance.yahoo.com/quote/{ticker_symbol}/analysis"
-            headers = {'User-agent': 'Mozilla/5.0'} 
+                ticker_symbol_vn = f"{ticker_symbol}.VN"
+            else:
+                ticker_symbol_vn = ticker_symbol
+                
+            # Tạo đối tượng Ticker
+            stock = yf.Ticker(ticker_symbol_vn)
             
-            response = requests.get(analysts_site, headers=headers)
-            response.raise_for_status() # Báo lỗi nếu trang không tồn tại (404)
-
-            tables = pd.read_html(response.text)
+            # Lấy tất cả dữ liệu analysis mà bạn đã liệt kê
+            data_package["recommendations"] = stock.recommendations
+            data_package["earnings_estimate"] = stock.earnings_estimate
+            data_package["revenue_estimate"] = stock.revenue_estimate
+            data_package["earnings_history"] = stock.earnings_history
+            data_package["eps_trend"] = stock.eps_trend
+            data_package["eps_revisions"] = stock.eps_revisions
+            data_package["growth_estimates"] = stock.growth_estimates
             
-            # Tên các bảng (theo thứ tự trên Yahoo Finance)
-            table_names = [
-                "Ước tính Thu nhập (Earnings Estimate)", 
-                "Ước tính Doanh thu (Revenue Estimate)", 
-                "Lịch sử Thu nhập (Earnings History)",
-                "Xu hướng EPS (EPS Trend)", 
-                "Điều chỉnh EPS (EPS Revisions)",
-                "Ước tính Tăng trưởng (Growth Estimates)"
-            ]
-            
-            # Ghép tên và bảng lại một cách an toàn
-            num_tables_found = min(len(tables), len(table_names))
-            
-            table_dict = {
-                table_names[i]: tables[i] for i in range(num_tables_found)
-            }
-            
-            return table_dict
+            return data_package
         
         except Exception as e:
-            st.error(f"Lỗi khi 'cào' dữ liệu phân tích cho {ticker_symbol}: {e}")
-            st.info(f"Mã cổ phiếu {ticker_symbol} có thể không có dữ liệu phân tích trên Yahoo Finance.")
+            st.error(f"Lỗi khi tải dữ liệu yfinance: {e}")
             return None
 
-    # --- Hiển thị kết quả ---
     if ticker != '-':
-        with st.spinner(f"Đang tải dữ liệu phân tích cho {ticker}..."):
-            analysis_dict = get_analysis_data(ticker)
+        with st.spinner(f"Đang tải dữ liệu phân tích từ yfinance cho {ticker}..."):
+            analysis_data = get_analysis_data_yfinance(ticker)
         
-        if analysis_dict and len(analysis_dict) > 0:
-            st.success(f"Đã tìm thấy {len(analysis_dict)} bảng phân tích:")
+        if analysis_data:
             
-            # Code này sẽ lặp qua TẤT CẢ các bảng tìm thấy
-            for table_name, table_df in analysis_dict.items():
-                st.subheader(table_name)
-                if not table_df.empty and len(table_df.columns) > 0:
-                    try:
-                        # Đặt cột đầu tiên làm chỉ mục (index) cho đẹp
-                        st.dataframe(table_df.set_index(table_df.columns[0]), use_container_width=True)
-                    except:
-                        st.dataframe(table_df, use_container_width=True)
-                else:
-                    st.dataframe(table_df, use_container_width=True)
+            # 1. Khuyến nghị (Recommendations)
+            st.subheader("Khuyến nghị của các chuyên gia phân tích")
+            recs_df = analysis_data.get("recommendations")
+            if recs_df is not None and not recs_df.empty:
+                st.dataframe(recs_df.sort_index(ascending=False), use_container_width=True)
+            else:
+                st.warning(f"Không tìm thấy dữ liệu 'Recommendations' cho {ticker}.")
+
+            # 2. Ước tính Thu nhập (Earnings Estimate)
+            st.subheader("Ước tính thu nhập (Earnings Estimate)")
+            earn_est_df = analysis_data.get("earnings_estimate")
+            if earn_est_df is not None and not earn_est_df.empty:
+                st.dataframe(earn_est_df, use_container_width=True)
+            else:
+                st.warning(f"Không tìm thấy dữ liệu 'Earnings Estimate' cho {ticker}.")
+
+            # 3. Ước tính Doanh thu (Revenue Estimate)
+            st.subheader("Ước tính doanh thu (Revenue Estimate)")
+            rev_est_df = analysis_data.get("revenue_estimate")
+            if rev_est_df is not None and not rev_est_df.empty:
+                st.dataframe(rev_est_df, use_container_width=True)
+            else:
+                st.warning(f"Không tìm thấy dữ liệu 'Revenue Estimate' cho {ticker}.")
+
+            # 4. Lịch sử Thu nhập (Earnings History)
+            st.subheader("Lịch sử thu nhập (Earnings History)")
+            earn_hist_df = analysis_data.get("earnings_history")
+            if earn_hist_df is not None and not earn_hist_df.empty:
+                st.dataframe(earn_hist_df, use_container_width=True)
+            else:
+                st.warning(f"Không tìm thấy dữ liệu 'Earnings History' cho {ticker}.")
+
+            # 5. Xu hướng EPS (EPS Trend)
+            st.subheader("Xu hướng EPS (EPS Trend)")
+            eps_trend_df = analysis_data.get("eps_trend")
+            if eps_trend_df is not None and not eps_trend_df.empty:
+                st.dataframe(eps_trend_df, use_container_width=True)
+            else:
+                st.warning(f"Không tìm thấy dữ liệu 'EPS Trend' cho {ticker}.")
+                
+            # 6. Điều chỉnh EPS (EPS Revisions)
+            st.subheader("Điều chỉnh EPS (EPS Revisions)")
+            eps_rev_df = analysis_data.get("eps_revisions")
+            if eps_rev_df is not None and not eps_rev_df.empty:
+                st.dataframe(eps_rev_df, use_container_width=True)
+            else:
+                st.warning(f"Không tìm thấy dữ liệu 'EPS Revisions' cho {ticker}.")
+
+            # 7. Ước tính Tăng trưởng (Growth Estimates)
+            st.subheader("Ước tính tăng trưởng (Growth Estimates)")
+            growth_est_df = analysis_data.get("growth_estimates")
+            if growth_est_df is not None and not growth_est_df.empty:
+                st.dataframe(growth_est_df, use_container_width=True)
+            else:
+                st.warning(f"Không tìm thấy dữ liệu 'Growth Estimates' cho {ticker}.")
+                
         else:
-            st.warning(f"Không tìm thấy dữ liệu phân tích nào cho {ticker} trên Yahoo Finance.")
-                                         
+            st.warning(f"Không thể tải bất kỳ dữ liệu phân tích nào cho {ticker}.")
+
 #==============================================================================
 # Tab 6: Mô phỏng Monte Carlo - ĐÃ HOÀN THIỆN
 #==============================================================================
@@ -438,7 +481,6 @@ def tab6():
                 mc_df, last_price = monte_carlo_simulation(ticker, time_horizon, simulations)
             
             if mc_df is not None:
-                # --- Vẽ Biểu đồ Mô phỏng ---
                 fig, ax = plt.subplots(figsize=(15, 10))
                 
                 # SỬA LỖI ĐƠN VỊ: Nhân 1000 cho dữ liệu vẽ biểu đồ
@@ -449,9 +491,7 @@ def tab6():
                 
                 plt.axhline(y=last_price * 1000, color='red', linestyle='--')
                 plt.legend([f'Giá Hiện tại: {last_price * 1000:,.0f} VND'])
-                
-                # Bỏ dòng code 'legendHandles' bị lỗi
-                
+                                
                 st.pyplot(fig)
                 
                 # --- Phân tích Value at Risk (VaR) ---
@@ -463,12 +503,12 @@ def tab6():
                 ax_hist.hist(ending_prices * 1000, bins=50, density=True)
                 
                 # Tính toán VaR 95%
-                future_price_95ci = np.percentile(ending_prices, 5) # Vẫn là đơn vị ngàn đồng
-                VaR = last_price - future_price_95ci # Vẫn là đơn vị ngàn đồng
+                future_price_95ci = np.percentile(ending_prices, 5) 
+                VaR = last_price - future_price_95ci 
                 
                 plt.axvline(future_price_95ci * 1000, color='red', linestyle='--', linewidth=2)
-                plt.legend([f'Giá trị Phân vị 5% (5th Percentile): {future_price_95ci * 1000:,.0f} VND'])
-                plt.title('Phân bổ Giá vào ngày cuối cùng')
+                plt.legend([f'Giá trị phân vị 5% (5th Percentile): {future_price_95ci * 1000:,.0f} VND'])
+                plt.title('Phân bổ giá vào ngày cuối cùng')
                 plt.xlabel('Giá (VND)')
                 plt.ylabel('Tần suất')
                 st.pyplot(fig_hist)
@@ -484,16 +524,14 @@ def tab6():
 # Tab 7: Xu hướng Portfolio - ĐÃ HOÀN THIỆN
 #==============================================================================
 def tab7():
-    st.title("So sánh Hiệu suất Portfolio (5 Năm)")
+    st.title("So sánh hiệu suất Portfolio (5 Năm)")
     st.write("Tab này so sánh sự tăng trưởng của các cổ phiếu VN30 trong 5 năm qua. Tất cả các cổ phiếu đều được chuẩn hóa về mốc '1.0' tại thời điểm bắt đầu để so sánh hiệu suất tăng trưởng một cách công bằng.")
     
     # Lấy danh sách VN30 (đã có ở global) và bỏ dấu '-'
     vn30_list = [t for t in VN30_TICKERS if t != '-']
     
     # Cho phép người dùng chọn nhiều mã
-    selected_tickers = st.multiselect("Chọn các mã để so sánh", 
-                                      options=vn30_list, 
-                                      default=['FPT', 'VCB', 'HPG']) # Đặt một vài mã làm mặc định
+    selected_tickers = st.multiselect("Chọn các mã để so sánh", options=vn30_list) 
     
     @st.cache_data(ttl=3600) # Cache 1 giờ
     def get_portfolio_data(tickers):
@@ -533,7 +571,7 @@ def tab7():
         portfolio_df = get_portfolio_data(selected_tickers)
                   
         if not portfolio_df.empty:
-            st.subheader("Biểu đồ Tăng trưởng Chuẩn hóa (5 Năm)")
+            st.subheader("Biểu đồ tăng trưởng chuẩn hóa (5 Năm)")
             
             # 4. VẼ BIỂU ĐỒ (Dùng px.line như file mẫu)
             # Plotly tự động nhận index (là ngày tháng) làm trục X

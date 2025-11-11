@@ -54,7 +54,7 @@ Dự án này được xây dựng dựa trên logic của file `findash_app.py`
 ### 2. Thiết lập thư viện
      Cài đặt tất cả các thư viện cần thiết vào môi trường này:
     ```bash
-    pip install streamlit pandas numpy plotly matplotlib requests 
+    pip install streamlit pandas numpy plotly matplotlib requests yfinance
     pip install git+https://github.com/thinh-vu/vnstock
     ```
     *(Lưu ý: `vnstock` sẽ tự động cài `vnai` và `vnstock_ezchart` làm phụ thuộc).*
