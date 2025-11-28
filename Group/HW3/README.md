@@ -6,7 +6,26 @@ Dự án này thực hiện thu thập và phân tích mạng xã hội (Social 
 Mục tiêu là tìm ra các chủ đề trung tâm, xu hướng nội dung và các cộng đồng (nhóm chủ đề) có liên quan chặt chẽ với nhau trên nền tảng YouTube.
 
 ## 📂 Cấu trúc dự án
-    cập nhật sau
+
+    ├── chart/                                  # Chứa các biểu đồ trực quan hóa xuất ra từ Python
+    │   ├── centrality_correlation_updated.png  # Ma trận tương quan giữa các chỉ số trung tâm (Heatmap)
+    │   ├── centrality_top10_all_5_metrics.png  # Biểu đồ thanh so sánh Top 10 nút quan trọng
+    │   ├── community_k_core_decomposition.png  # Biểu đồ phân rã K-Core (Sự bền vững của mạng)
+    │   ├── community_network_layout_preview.png# Hình ảnh xem trước bố cục mạng phân chia cộng đồng
+    │   ├── dist_clustering.png                 # Phân phối hệ số phân cụm
+    │   └── dist_degree_regression.png          # Phân phối bậc và đường hồi quy (Kiểm định Power Law)
+    │
+    ├── data/                                   # Chứa dữ liệu thô và đã xử lý
+    │   └── youtube_network_data.csv            # Dữ liệu cạnh (Edge List) thu thập từ API
+    │
+    ├── gephi/                                  # Các file dành riêng cho phần mềm Gephi
+    │   └── youtube_network_community.gexf      # File đồ thị đã tích hợp thông tin cộng đồng & K-core
+    │
+    ├── src/                                    # Mã nguồn (Source Code)
+    │   ├── analysis.py                         # Code phân tích mạng, tính chỉ số và vẽ biểu đồ
+    │   └── data_collection.py                  # Code thu thập dữ liệu từ YouTube API
+    │
+    └── README.md                               # Tài liệu báo cáo và hướng dẫn sử dụng
 
 ## 🛠 Công nghệ sử dụng
 * Ngôn ngữ: Python 3.x
