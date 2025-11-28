@@ -2,7 +2,6 @@ import googleapiclient.discovery
 import pandas as pd
 import itertools
 
-# --- CẤU HÌNH ---
 API_KEY = "AIzaSyCb7W_6lHeJNu9zuoxXzKYp4SZrufY3jxY"  # <--- API Key
 SEARCH_QUERY = "Trí tuệ nhân tạo"  # Chủ đề 
 MAX_VIDEOS = 200 # Số lượng video muốn quét
