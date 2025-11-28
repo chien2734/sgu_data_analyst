@@ -3,9 +3,9 @@ import pandas as pd
 import itertools
 
 # --- CẤU HÌNH ---
-API_KEY = "AIzaSyCb7W_6lHeJNu9zuoxXzKYp4SZrufY3jxY"  # <--- Thay API Key của bạn vào đây
-SEARCH_QUERY = "Trí tuệ nhân tạo"  # Chủ đề bạn muốn quét (đổi thành gì cũng được)
-MAX_VIDEOS = 200 # Số lượng video muốn quét (Càng nhiều thì mạng càng lớn)
+API_KEY = "AIzaSyCb7W_6lHeJNu9zuoxXzKYp4SZrufY3jxY"  # <--- API Key
+SEARCH_QUERY = "Trí tuệ nhân tạo"  # Chủ đề 
+MAX_VIDEOS = 200 # Số lượng video muốn quét
 
 def get_youtube_tags(api_key, query, max_results):
     youtube = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
