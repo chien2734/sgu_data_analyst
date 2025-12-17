@@ -1,0 +1,21 @@
+# --- Xử lý dữ liệu ---
+pandas
+numpy
+openpyxl
+world_bank_data
+
+# --- Xử lý chuỗi & Chuẩn hóa tên nước ---
+fuzzywuzzy
+python-Levenshtein
+
+# --- Trực quan hóa (EDA & Dashboard) ---
+matplotlib
+seaborn
+plotly
+streamlit
+
+# --- Machine Learning & Thống kê ---
+scikit-learn
+statsmodels
+xgboost
+scipy
