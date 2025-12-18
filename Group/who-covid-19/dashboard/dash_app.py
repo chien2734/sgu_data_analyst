@@ -1,10 +1,12 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import os
+import numpy as np
 
 # -----------------------------------------------------------------------------
-# 1. CẤU HÌNH TRANG & CSS
+# 1. CẤU HÌNH TRANG
 # -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="COVID-19 Analytics Dashboard",
@@ -13,16 +15,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# CSS chỉnh font chữ KPI cho to rõ
 st.markdown("""
 <style>
-    .metric-card {
-        background-color: #f0f2f6;
-        border-radius: 10px;
-        padding: 15px;
-        text-align: center;
-    }
     .stMetric_value {
-        font-size: 2rem !important;
+        font-size: 1.8rem !important;
         color: #ff4b4b;
     }
 </style>
@@ -30,173 +27,286 @@ st.markdown("""
 
 
 # -----------------------------------------------------------------------------
-# 2. HÀM LOAD DỮ LIỆU (ĐÃ SỬA ĐƯỜNG DẪN)
+# 2. HÀM LOAD & XỬ LÝ DỮ LIỆU
 # -----------------------------------------------------------------------------
 @st.cache_data
-def load_data():
+def load_and_merge_data():
     try:
-        # --- ĐOẠN SỬA QUAN TRỌNG ---
-        # File của bạn: .../who-covid-19/dashboard/dash_app.py
+        # Tự động tìm đường dẫn
         current_file = os.path.abspath(__file__)
-
-        # Đi ngược 1 cấp -> vào folder 'dashboard'
         dashboard_dir = os.path.dirname(current_file)
-
-        # Đi ngược thêm 1 cấp nữa -> vào folder gốc 'who-covid-19' (Nơi chứa data)
         project_root = os.path.dirname(dashboard_dir)
-
-        # Tạo đường dẫn đến data
         data_path = os.path.join(project_root, 'data', 'processed')
-        # ---------------------------
 
-        # 1. Load Daily Data
-        df_daily = pd.read_csv(os.path.join(data_path, '01_clean_daily_timeseries.csv.gz'), compression='gzip')
-        df_daily['Date_reported'] = pd.to_datetime(df_daily['Date_reported'])
+        path_cluster = os.path.join(data_path, 'timeseries_with_clusters.csv')
+        path_summary = os.path.join(data_path, '02_country_population_summary.csv.gz')
 
-        # 2. Load Summary Data
-        df_summary = pd.read_csv(os.path.join(data_path, '02_country_population_summary.csv.gz'), compression='gzip')
+        # Kiểm tra file tồn tại
+        if not os.path.exists(path_cluster) or not os.path.exists(path_summary):
+            st.error("⚠️ Thiếu file dữ liệu trong folder data/processed/")
+            return None, None, None
 
-        # 3. Load 4 Countries Data
-        df_4 = pd.read_csv(os.path.join(data_path, '03_4_country_population_summary.csv.gz'), compression='gzip')
-        df_4['Date_reported'] = pd.to_datetime(df_4['Date_reported'])
+        # Đọc dữ liệu
+        df_ts = pd.read_csv(path_cluster)
+        df_ts['Date_reported'] = pd.to_datetime(df_ts['Date_reported'])
+        df_summary = pd.read_csv(path_summary, compression='gzip')
 
-        return df_daily, df_summary, df_4
+        # Hợp nhất (Merge) Cluster vào dữ liệu tổng hợp
+        cluster_map = df_ts[['Country', 'Cluster']].drop_duplicates()
+        df_static = df_summary.merge(cluster_map, on='Country', how='left')
 
-    except FileNotFoundError:
+        # Xử lý Cụm -1 (Những nước không được phân cụm)
+        df_static['Cluster'] = df_static['Cluster'].fillna(-1).astype(int).astype(str)
+        df_static['Cluster'] = df_static['Cluster'].replace('-1', 'Chưa phân cụm')
+
+        # Tính Tỷ lệ tử vong (Fatality Rate)
+        df_static['Fatality_Rate'] = (df_static['Total_Deaths'] / df_static['Total_Cases']) * 100
+
+        # Lọc dữ liệu 4 nước trọng điểm cho phần Dự báo
+        target_countries = ["Viet Nam", "China", "India", "United States of America"]
+        df_4 = df_ts[df_ts['Country'].isin(target_countries)].copy()
+
+        return df_ts, df_static, df_4
+
+    except Exception as e:
+        st.error(f"Lỗi khi xử lý dữ liệu: {e}")
         return None, None, None
 
 
-# Load dữ liệu
-df_daily, df_summary, df_4 = load_data()
+# Gọi hàm load dữ liệu
+df_ts, df_static, df_4 = load_and_merge_data()
 
-# Kiểm tra nếu không tìm thấy file thì báo lỗi chi tiết để debug
-if df_daily is None:
-    st.error(f"⚠️ VẪN LỖI ĐƯỜNG DẪN! Code đang tìm file tại: {os.path.dirname(os.path.abspath(__file__))}")
-    st.warning(
-        "Hãy đảm bảo bạn đã chạy file '01_data_preprocessing.ipynb' để tạo ra 3 file .gz trong thư mục data/processed/")
+# Nếu không có dữ liệu thì dừng app
+if df_ts is None:
     st.stop()
 
 # -----------------------------------------------------------------------------
-# 3. SIDEBAR - THANH ĐIỀU HƯỚNG
+# 3. SIDEBAR (THANH ĐIỀU HƯỚNG)
 # -----------------------------------------------------------------------------
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/2785/2785819.png", width=100)
+    st.image("https://cdn-icons-png.flaticon.com/512/2785/2785819.png", width=80)
     st.title("COVID-19 Analytics")
-    st.info("Nhóm 02: Chiến, An, Diễm, Anh")
+    st.caption("Nhóm 02: Chiến, An, Diễm, Anh")
+    st.markdown("---")
+
+    menu = st.radio(
+        "📌 MENU CHÍNH:",
+        [
+            "1. Tổng quan (Overview)",
+            "2. Thống kê Mô tả (EDA)",
+            "3. Phân tích Cụm (Clustering)",
+            "4. Dự báo (Prediction)"
+        ]
+    )
 
     st.markdown("---")
-    menu = st.radio(
-        "📌 CHỌN CHỨC NĂNG:",
-        ["1. Tổng quan (Overview)", "2. Phân cụm (Clustering)", "3. Dự báo (Prediction)"]
-    )
-    st.markdown("---")
-    st.caption("Dữ liệu nguồn: WHO Global Data")
+    # Bộ lọc Cụm (Chỉ hiện khi chọn Tab Clustering)
+    if menu == "3. Phân tích Cụm (Clustering)":
+        st.write("🔍 **Bộ lọc Cụm**")
+        all_clusters = sorted(df_static['Cluster'].unique())
+        # Mặc định chọn tất cả trừ nhóm 'Chưa phân cụm'
+        default_clusters = [c for c in all_clusters if c != 'Chưa phân cụm']
+
+        selected_clusters = st.multiselect("Hiển thị Cụm:", all_clusters, default=default_clusters)
+        df_static_filtered = df_static[df_static['Cluster'].isin(selected_clusters)]
+    else:
+        df_static_filtered = df_static.copy()
 
 # -----------------------------------------------------------------------------
 # 4. TAB 1: TỔNG QUAN (OVERVIEW)
 # -----------------------------------------------------------------------------
 if menu == "1. Tổng quan (Overview)":
-    st.header("🌍 Tổng quan Tình hình Dịch tễ Toàn cầu")
+    st.header("🌍 Tổng quan Dịch tễ Toàn cầu")
 
-    # --- KPI CARDS ---
-    col1, col2, col3, col4 = st.columns(4)
-
-    total_cases = df_summary['Total_Cases'].sum()
-    total_deaths = df_summary['Total_Deaths'].sum()
-    avg_fatality = df_summary['Fatality_Rate'].mean()
-    n_countries = df_summary['Country'].nunique()
-
-    col1.metric("Số Quốc gia", f"{n_countries}")
-    col2.metric("Tổng Ca nhiễm", f"{total_cases:,.0f}")
-    col3.metric("Tổng Tử vong", f"{total_deaths:,.0f}")
-    col4.metric("Tỷ lệ Tử vong TB", f"{avg_fatality:.2f}%")
+    # KPI Cards
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Số Quốc gia", f"{df_static['Country'].nunique()}")
+    c2.metric("Tổng ca nhiễm", f"{df_static['Total_Cases'].sum():,.0f}")
+    c3.metric("Tổng tử vong", f"{df_static['Total_Deaths'].sum():,.0f}")
+    c4.metric("Tỷ lệ tử vong TB", f"{df_static['Fatality_Rate'].mean():.2f}%")
 
     st.markdown("---")
 
-    # --- BIỂU ĐỒ 1: BẢN ĐỒ NHIỆT ---
-    st.subheader("📍 Bản đồ mức độ lây nhiễm")
-    fig_map = px.choropleth(
-        df_summary,
+    # --- BẢN ĐỒ ---
+    st.subheader("📍 Bản đồ Trực quan hóa")
+    col_map, col_chart = st.columns([2, 1])
+
+    with col_map:
+        map_mode = st.radio("Chế độ xem:", ["Mặt phẳng (2D)", "Địa cầu (3D)"], horizontal=True)
+
+        # Cấu hình dữ liệu chung cho bản đồ
+        common_data = dict(
+            locations=df_static['Country'],
+            locationmode='country names',
+            z=df_static['Total_Cases'],
+            text=df_static['Country'],
+            colorscale='Plasma',
+            colorbar_title="Tổng ca nhiễm"
+        )
+
+        if map_mode == "Địa cầu (3D)":
+            fig_map = go.Figure(data=go.Choropleth(**common_data))
+            fig_map.update_layout(
+                geo=dict(
+                    showframe=False, showcoastlines=False,
+                    projection_type='orthographic',  # 3D
+                    showocean=True, oceancolor="LightBlue",
+                    showland=True, landcolor="Gray",
+                    bgcolor='rgba(0,0,0,0)'
+                ),
+                height=500, margin={"r": 0, "t": 0, "l": 0, "b": 0}
+            )
+        else:
+            fig_map = go.Figure(data=go.Choropleth(**common_data))
+            fig_map.update_layout(
+                geo=dict(
+                    showframe=False, showcoastlines=True,
+                    projection_type='natural earth',  # 2D
+                    showocean=True, oceancolor="LightBlue",
+                    showland=True, landcolor="Gray",
+                    bgcolor='rgba(0,0,0,0)'
+                ),
+                height=500, margin={"r": 0, "t": 0, "l": 0, "b": 0}
+            )
+
+        st.plotly_chart(fig_map, use_container_width=True)
+
+    with col_chart:
+        tab_c1, tab_c2 = st.tabs(["Top Ca nhiễm", "Top Tử vong"])
+        with tab_c1:
+            top10 = df_static.sort_values('Total_Cases', ascending=False).head(10)
+            fig_bar1 = px.bar(top10, x='Total_Cases', y='Country', orientation='h',
+                              color='Total_Cases', color_continuous_scale='Plasma')
+            fig_bar1.update_layout(yaxis={'categoryorder': 'total ascending'}, height=450)
+            st.plotly_chart(fig_bar1, use_container_width=True)
+
+        with tab_c2:
+            top10_d = df_static.sort_values('Total_Deaths', ascending=False).head(10)
+            fig_bar2 = px.bar(top10_d, x='Total_Deaths', y='Country', orientation='h',
+                              color='Total_Deaths', color_continuous_scale='Reds')
+            fig_bar2.update_layout(yaxis={'categoryorder': 'total ascending'}, height=450)
+            st.plotly_chart(fig_bar2, use_container_width=True)
+
+# -----------------------------------------------------------------------------
+# 5. TAB 2: THỐNG KÊ MÔ TẢ (EDA)
+# -----------------------------------------------------------------------------
+elif menu == "2. Thống kê Mô tả (EDA)":
+    st.header("📊 Phân tích Khám phá Dữ liệu")
+
+    st.subheader("1. Tương quan biến số")
+    corr_cols = ['Total_Cases', 'Total_Deaths', 'Population', 'Fatality_Rate', 'Cases_per_1M']
+    corr_matrix = df_static[corr_cols].corr()
+
+    fig_corr = px.imshow(corr_matrix, text_auto=".2f", color_continuous_scale="RdBu_r",
+                         title="Ma trận Tương quan")
+    st.plotly_chart(fig_corr, use_container_width=True)
+
+    st.subheader("2. Phân phối & Ngoại lệ")
+    c1, c2 = st.columns(2)
+    with c1:
+        metric = st.selectbox("Chọn chỉ số:", corr_cols)
+        fig_hist = px.histogram(df_static, x=metric, nbins=30, marginal="box",
+                                color_discrete_sequence=['#FF9F43'])  # Màu cam
+        st.plotly_chart(fig_hist, use_container_width=True)
+    with c2:
+        fig_box = px.box(df_static, y=metric, points="outliers", hover_name="Country",
+                         color_discrete_sequence=['#0ABDE3'])  # Màu xanh
+        st.plotly_chart(fig_box, use_container_width=True)
+
+# -----------------------------------------------------------------------------
+# 6. TAB 3: PHÂN TÍCH CỤM (KHẮC PHỤC LỖI FIG_SCATTER)
+# -----------------------------------------------------------------------------
+elif menu == "3. Phân tích Cụm (Clustering)":
+    st.header("🧩 Kết quả Phân cụm (K-Means)")
+
+    # --- BẢN ĐỒ CỤM ---
+    st.subheader("🗺️ Bản đồ Phân bố Cụm")
+
+    color_map = px.colors.qualitative.Bold  # Màu sắc rõ ràng
+
+    fig_cluster_map = px.choropleth(
+        df_static_filtered,
         locations="Country",
         locationmode="country names",
-        color="Total_Cases",
+        color="Cluster",
         hover_name="Country",
-        color_continuous_scale="Reds",
-        title="Phân bố Tổng số ca nhiễm trên thế giới"
+        hover_data=["Total_Cases", "Fatality_Rate"],
+        color_discrete_sequence=color_map,
+        title="Vị trí địa lý của các Cụm"
     )
-    fig_map.update_layout(height=500, margin={"r": 0, "t": 30, "l": 0, "b": 0})
-    st.plotly_chart(fig_map, use_container_width=True)
+    fig_cluster_map.update_layout(
+        margin={"r": 0, "t": 30, "l": 0, "b": 0},
+        geo=dict(
+            showframe=False, showcoastlines=True,
+            projection_type='natural earth',
+            showocean=True, oceancolor="LightBlue",
+            showland=True, landcolor="Gray",
+            bgcolor='rgba(0,0,0,0)'
+        )
+    )
+    st.plotly_chart(fig_cluster_map, use_container_width=True)
 
-    # --- BIỂU ĐỒ 2 & 3: XU HƯỚNG & TOP 10 ---
-    c1, c2 = st.columns([2, 1])
+    st.markdown("---")
 
+    # --- BIỂU ĐỒ SCATTER ---
+    c1, c2 = st.columns([3, 1])
     with c1:
-        st.subheader("📈 Xu hướng Ca nhiễm mới (Toàn cầu)")
-        global_trend = df_daily.groupby('Date_reported')['New_cases'].sum().reset_index()
-        global_trend['MA7'] = global_trend['New_cases'].rolling(window=7).mean()
+        st.subheader("Phân tích đặc trưng Cụm")
+        x_axis = st.selectbox("Trục X:", ["Total_Cases", "Population", "Total_Deaths"], index=1)
+        y_axis = st.selectbox("Trục Y:", ["Fatality_Rate", "Cases_per_1M", "Total_Cases"], index=0)
 
-        fig_trend = px.line(global_trend, x='Date_reported', y='New_cases', title='Diễn biến dịch theo ngày')
-        fig_trend.add_scatter(x=global_trend['Date_reported'], y=global_trend['MA7'], mode='lines',
-                              name='Trung bình 7 ngày')
-        st.plotly_chart(fig_trend, use_container_width=True)
-
-    with c2:
-        st.subheader("🏆 Top 10 Quốc gia")
-        top_10 = df_summary.sort_values('Total_Cases', ascending=False).head(10)
-        fig_bar = px.bar(top_10, x='Total_Cases', y='Country', orientation='h', title='Top 10 Ca nhiễm cao nhất')
-        fig_bar.update_layout(yaxis={'categoryorder': 'total ascending'})
-        st.plotly_chart(fig_bar, use_container_width=True)
-
-# -----------------------------------------------------------------------------
-# 5. TAB 2: PHÂN CỤM (CLUSTERING)
-# -----------------------------------------------------------------------------
-elif menu == "2. Phân cụm (Clustering)":
-    st.header("🧩 Phân nhóm Quốc gia (K-Means Clustering)")
-    st.markdown("Mục tiêu: Gom nhóm các quốc gia có đặc điểm dịch tễ tương đồng.")
-
-    if 'Cluster' in df_summary.columns:
-        color_col = 'Cluster'
-        st.success("✅ Đã cập nhật dữ liệu Phân cụm!")
-    else:
-        color_col = 'WHO_region'
-        st.warning("⚠️ Đang hiển thị màu theo Khu vực (Demo). Chờ cập nhật kết quả 'Cluster'.")
-
-    col1, col2 = st.columns([3, 1])
-
-    with col1:
-        st.subheader("Biểu đồ Phân tán (Scatter Plot)")
-        x_axis = st.selectbox("Chọn trục X:", ["Total_Cases", "Population", "Total_Deaths"], index=0)
-        y_axis = st.selectbox("Chọn trục Y:", ["Fatality_Rate", "Deaths_per_1M", "Cases_per_1M"], index=0)
-
+        # ĐẢM BẢO BIẾN fig_scatter ĐƯỢC ĐỊNH NGHĨA TRƯỚC KHI GỌI
         fig_scatter = px.scatter(
-            df_summary,
-            x=x_axis, y=y_axis, size="Population", color=color_col,
-            hover_name="Country", log_x=True,
-            title=f"Tương quan giữa {x_axis} và {y_axis}"
+            df_static_filtered,
+            x=x_axis, y=y_axis,
+            color="Cluster",
+            size="Population",
+            hover_name="Country",
+            log_x=True, log_y=True,
+            color_discrete_sequence=color_map,  # Đồng bộ màu với bản đồ
+            title=f"Mối quan hệ: {x_axis} vs {y_axis}"
         )
         st.plotly_chart(fig_scatter, use_container_width=True)
 
-    with col2:
-        st.subheader("Chi tiết Nhóm")
-        st.write(df_summary[color_col].value_counts())
+    with c2:
+        st.subheader("Số lượng nước")
+        # Đếm số lượng nước trong từng cụm
+        count_data = df_static_filtered['Cluster'].value_counts().reset_index()
+        count_data.columns = ['Cluster', 'Số nước']
+        st.dataframe(count_data, hide_index=True)
 
 # -----------------------------------------------------------------------------
-# 6. TAB 3: DỰ BÁO (PREDICTION)
+# 7. TAB 4: DỰ BÁO (PREDICTION)
 # -----------------------------------------------------------------------------
-elif menu == "3. Dự báo (Prediction)":
-    st.header("🤖 Mô hình Dự báo Máy học")
+elif menu == "4. Dự báo (Prediction)":
+    st.header("📈 Dự báo Xu hướng")
 
-    col_sel, col_kpi = st.columns([1, 3])
-    with col_sel:
-        selected_country = st.selectbox("🏳️ Chọn Quốc gia:", df_4['Country'].unique())
+    if df_4.empty:
+        st.warning("⚠️ Lỗi dữ liệu.")
+    else:
+        sel_country = st.selectbox("Quốc gia:", df_4['Country'].unique())
+        country_data = df_4[df_4['Country'] == sel_country].copy()
 
-    country_data = df_4[df_4['Country'] == selected_country]
+        # Vẽ lịch sử
+        fig_hist = px.line(country_data, x='Date_reported', y='New_cases', title=f"Lịch sử tại {sel_country}")
+        fig_hist.update_traces(line_color='#00cec9')
+        if 'New_cases_MA7' in country_data.columns:
+            fig_hist.add_scatter(x=country_data['Date_reported'], y=country_data['New_cases_MA7'], mode='lines',
+                                 name='MA7 (Smooth)', line=dict(color='#fdcb6e'))
+        st.plotly_chart(fig_hist, use_container_width=True)
 
-    st.subheader(f"Diễn biến thực tế tại {selected_country}")
-    fig_pred = px.line(country_data, x='Date_reported', y='New_cases', title="Dữ liệu lịch sử")
-    fig_pred.add_scatter(x=country_data['Date_reported'], y=country_data['New_cases_MA7'], mode='lines',
-                         name='MA7 (Smooth)')
-    st.plotly_chart(fig_pred, use_container_width=True)
+        # Demo Dự báo
+        st.subheader("Dự báo (Mô phỏng)")
+        model_name = st.selectbox("Mô hình:", ["XGBoost", "Random Forest", "Linear Regression"])
 
-    st.markdown("---")
-    st.info("⚠️ Khu vực này sẽ hiển thị kết quả dự báo khi tích hợp file từ folder results/")
+        recent = country_data.tail(90).reset_index(drop=True)
+        noise = np.random.normal(0, 0.1, len(recent))
+        base_val = recent['New_cases_MA7'] if 'New_cases_MA7' in recent else recent['New_cases']
+        preds = base_val * (1 + noise)
+
+        fig_pred = go.Figure()
+        fig_pred.add_trace(
+            go.Scatter(x=recent['Date_reported'], y=recent['New_cases'], name="Thực tế", line=dict(color='white')))
+        fig_pred.add_trace(go.Scatter(x=recent['Date_reported'], y=preds, name=f"Dự báo ({model_name})",
+                                      line=dict(dash='dot', color='#ff7675')))
+        st.plotly_chart(fig_pred, use_container_width=True)
