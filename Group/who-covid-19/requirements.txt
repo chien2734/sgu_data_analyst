@@ -19,3 +19,6 @@ scikit-learn
 statsmodels
 xgboost
 scipy
+
+# --- Xử lý AI chatbox ---
+google-generativeai
