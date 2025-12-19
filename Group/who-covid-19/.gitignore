@@ -17,3 +17,6 @@ venv/
 
 # Temporary
 *.tmp
+
+# Bỏ qua file cấu hình chứa API KEY
+.streamlit/secrets.toml
