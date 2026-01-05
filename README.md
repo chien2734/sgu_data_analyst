@@ -25,6 +25,10 @@ sgu_data_analyst/Group/
   
   ├── lab3_BuiDucChien_3122410039/ # Bài tập lab03
   
+  ├── HW2 # Bài tập phân tích mạng xã hội
+
+  ├── who-covid-19 # Đồ án cuối kì
+  
   └── README.md # Tệp mô tả dự án
 
 
